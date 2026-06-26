@@ -135,12 +135,12 @@ class TelegramNewsBot:
 
         try:
             if post.image_url:
-                # Try to send with image - download first
+                # Try to send with image - download first (longer timeout)
                 try:
                     import aiohttp
                     from aiogram.types import BufferedInputFile
                     
-                    timeout = aiohttp.ClientTimeout(total=30)
+                    timeout = aiohttp.ClientTimeout(total=60)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
                         async with session.get(post.image_url) as resp:
                             if resp.status == 200:
@@ -157,7 +157,7 @@ class TelegramNewsBot:
                 except Exception as img_err:
                     logger.warning(f"Failed to download image: {img_err}")
                 
-                # Fallback: try with URL directly
+                # Fallback: try with URL directly (no download needed)
                 try:
                     await self.bot.send_photo(
                         chat_id=config.telegram.chat_id,
@@ -167,7 +167,7 @@ class TelegramNewsBot:
                     )
                     return True
                 except TelegramAPIError as e:
-                    logger.warning(f"Failed to send photo: {e}")
+                    logger.warning(f"Failed to send photo URL: {e}")
                     # Fall back to text only
                     await self.bot.send_message(
                         chat_id=config.telegram.chat_id,

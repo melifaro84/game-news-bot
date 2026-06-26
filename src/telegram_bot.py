@@ -4,6 +4,7 @@ Telegram bot module for sending news as rich posts with AI-generated summaries
 import asyncio
 import io
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -14,6 +15,7 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from config import config
 from news_fetcher import NewsItem
@@ -51,10 +53,23 @@ class TelegramNewsBot:
             return False
 
         try:
-            self.bot = Bot(
-                token=config.telegram.bot_token,
-                default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-            )
+            # Proxy configuration
+            proxy_url = os.environ.get('SOCKS5_PROXY', None)
+            
+            if proxy_url:
+                logger.info(f"Using proxy: {proxy_url}")
+                session = AiohttpSession(proxy=proxy_url)
+                self.bot = Bot(
+                    token=config.telegram.bot_token,
+                    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+                    session=session
+                )
+            else:
+                self.bot = Bot(
+                    token=config.telegram.bot_token,
+                    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+                )
+            
             self.dp = Dispatcher()
             self._configured = True
             logger.info("Telegram bot configured successfully")

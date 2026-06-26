@@ -105,7 +105,7 @@ class SimpleNewsBot:
                    (16, 30), (17, 30), (19, 30), (20, 30), (22, 30)]
         
         for h, m in schedule:
-            if h == hour and 0 <= minute < 30:
+            if h == hour and abs(minute - m) < 5:  # ±5 минут
                 return True
         return False
     
@@ -115,17 +115,19 @@ class SimpleNewsBot:
             logger.error("Cannot configure bot")
             return
         
-        logger.info("Bot started!")
-        last_send_hour = -1
+        logger.info("Bot started in AUTO mode!")
+        logger.info("Schedule: 07:00, 8:30, 10:30, 11:30, 13:30, 14:30, 16:30, 17:30, 19:30, 20:30, 22:30")
+        last_send_key = None  # Track (hour, minute) of last send
         
         while True:
             try:
                 now = datetime.now()
                 
-                # Проверяем каждый час
-                if now.minute >= 0 and now.minute < 30:
-                    if self.should_send() and now.hour != last_send_hour:
-                        last_send_hour = now.hour
+                if self.should_send():
+                    send_key = (now.hour, 0 if now.minute < 15 else 30)
+                    if send_key != last_send_key:
+                        last_send_key = send_key
+                        logger.info(f"Time to send news! ({now.hour}:{now.minute})")
                         await self.send_news()
                 
                 await asyncio.sleep(60)  # Проверяем каждую минуту

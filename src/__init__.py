@@ -1,0 +1,3 @@
+"""
+Game News Bot package
+"""

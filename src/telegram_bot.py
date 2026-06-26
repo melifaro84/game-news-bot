@@ -342,14 +342,32 @@ class TelegramNewsBot:
         retry_count = 0
         max_retries = 100
         
+        from aiogram.client.default import DefaultBotProperties
+        from aiogram.methods import GetMe
+        
+        # Test connection first
+        try:
+            await self.bot.session.storage.get_me()
+            logger.info("Telegram connection OK")
+        except Exception as e:
+            logger.warning(f"Telegram connection test failed: {e}")
+        
         while retry_count < max_retries:
             try:
-                await self.dp.start_polling(self.bot)
+                # Start polling with longer timeout
+                await self.dp.start_polling(
+                    self.bot,
+                    timeout=60,  # 60 seconds timeout
+                    handle_as_tasks=True
+                )
                 break  # Normal exit
+            except asyncio.CancelledError:
+                logger.info("Polling cancelled")
+                break
             except Exception as e:
                 retry_count += 1
                 logger.warning(f"Polling error (attempt {retry_count}): {e}")
-                await asyncio.sleep(5)  # Wait before reconnect
+                await asyncio.sleep(10)  # Wait longer before reconnect
         
         if retry_count >= max_retries:
             logger.error("Max polling retries reached, giving up")

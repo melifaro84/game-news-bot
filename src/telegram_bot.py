@@ -140,7 +140,7 @@ class TelegramNewsBot:
                     import aiohttp
                     from aiogram.types import BufferedInputFile
                     
-                    timeout = aiohttp.ClientTimeout(total=10)
+                    timeout = aiohttp.ClientTimeout(total=30)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
                         async with session.get(post.image_url) as resp:
                             if resp.status == 200:

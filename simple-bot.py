@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple News Bot - автоматическая рассылка + обработка команд Telegram
+Simple News Bot - автоматическая рассылка новостей по расписанию
+БЕЗ polling - просто работает по расписанию
 """
 import asyncio
 import logging
@@ -34,8 +35,7 @@ class SimpleNewsBot:
         self.bot = TelegramNewsBot(config.telegram.deepseek_api_key)
         self.publisher = PostPublisher(config.telegram.deepseek_api_key)
         self.sent_hashes = self._load_sent_hashes()
-        self.scheduler_task = None
-        self.polling_task = None
+        self.last_sent = {}  # Track last send time per slot
         
     def _load_sent_hashes(self):
         try:
@@ -100,45 +100,6 @@ class SimpleNewsBot:
         logger.info(f"Sent {sent} posts")
         return sent
     
-    async def scheduler_loop(self):
-        """Автоматическая рассылка по расписанию"""
-        logger.info("Scheduler started!")
-        last_send_key = None
-        
-        while True:
-            try:
-                now = datetime.now()
-                hour = now.hour
-                minute = now.minute
-                
-                # Расписание: 07:00 (утро), 8:30, 10:30, 11:30, 13:30, 14:30, 16:30, 17:30, 19:30, 20:30, 22:30
-                schedule = [(7, 0), (8, 30), (10, 30), (11, 30), (13, 30), (14, 30), 
-                           (16, 30), (17, 30), (19, 30), (20, 30), (22, 30)]
-                
-                for h, m in schedule:
-                    if h == hour and abs(minute - m) < 5:
-                        send_key = (h, m)
-                        if send_key != last_send_key:
-                            last_send_key = send_key
-                            count = 10 if h == 7 else 2  # Утром 10 новостей
-                            logger.info(f"Scheduled send at {h}:{m} ({count} news)")
-                            
-                            if h == 7:
-                                # Утренняя подборка - берём больше новостей
-                                await self.send_morning_digest()
-                            else:
-                                await self.send_news(2)
-                        break
-                
-                await asyncio.sleep(60)
-                
-            except asyncio.CancelledError:
-                logger.info("Scheduler stopped")
-                break
-            except Exception as e:
-                logger.error(f"Scheduler error: {e}")
-                await asyncio.sleep(60)
-    
     async def send_morning_digest(self):
         """Утренняя подборка - до 10 новостей"""
         logger.info("Morning digest...")
@@ -167,19 +128,70 @@ class SimpleNewsBot:
         logger.info(f"Morning digest sent: {len(selected)} posts")
     
     async def run(self):
-        """Главный цикл - запускаем и рассылку, и обработку команд"""
+        """Главный цикл - только автоматическая рассылка"""
         if not self.bot.configure():
             logger.error("Cannot configure bot")
             return
         
-        # Настраиваем обработчики команд
-        self.bot.setup_handlers()
+        logger.info("=" * 50)
+        logger.info("Bot started in AUTO mode!")
+        logger.info("Schedule:")
+        logger.info("  07:00 - Morning digest (10 news)")
+        logger.info("  8:30, 10:30, 11:30, 13:30, 14:30")
+        logger.info("  16:30, 17:30, 19:30, 20:30, 22:30")
+        logger.info("=" * 50)
         
-        # Запускаем параллельно
-        await asyncio.gather(
-            self.scheduler_loop(),
-            self.bot.start_polling()
-        )
+        while True:
+            try:
+                now = datetime.now()
+                hour = now.hour
+                minute = now.minute
+                
+                # Расписание
+                schedule = {
+                    (7, 0): ('morning', 10),    # Утро - 10 новостей
+                    (8, 30): ('normal', 2),
+                    (10, 30): ('normal', 2),
+                    (11, 30): ('normal', 2),
+                    (13, 30): ('normal', 2),
+                    (14, 30): ('normal', 2),
+                    (16, 30): ('normal', 2),
+                    (17, 30): ('normal', 2),
+                    (19, 30): ('normal', 2),
+                    (20, 30): ('normal', 2),
+                    (22, 30): ('normal', 2),
+                }
+                
+                # Проверяем расписание
+                for (h, m), (mode, count) in schedule.items():
+                    if h == hour and abs(minute - m) < 3:  # ±3 минуты
+                        send_key = (h, m)
+                        if send_key not in self.last_sent:
+                            self.last_sent[send_key] = None
+                        
+                        # Не отправляем дважды
+                        import time
+                        if self.last_sent[send_key] is None or \
+                           (time.time() - self.last_sent[send_key]) > 3600:
+                            
+                            self.last_sent[send_key] = time.time()
+                            
+                            logger.info(f"Scheduled send: {h}:{m} ({mode}, {count} news)")
+                            
+                            if mode == 'morning':
+                                await self.send_morning_digest()
+                            else:
+                                await self.send_news(count)
+                        break
+                
+                await asyncio.sleep(60)  # Проверяем каждую минуту
+                
+            except asyncio.CancelledError:
+                logger.info("Bot stopped")
+                break
+            except Exception as e:
+                logger.error(f"Error: {e}")
+                await asyncio.sleep(60)
 
 
 async def main():
@@ -188,7 +200,6 @@ async def main():
         await bot.run()
     except KeyboardInterrupt:
         logger.info("Shutdown")
-        await bot.bot.close()
 
 
 if __name__ == '__main__':
